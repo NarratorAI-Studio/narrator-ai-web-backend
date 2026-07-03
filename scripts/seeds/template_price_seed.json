@@ -1,0 +1,28 @@
+{
+  "_meta": {
+    "description": "Synthetic seed dataset for fa_template_price backfill examples.",
+    "source": "Public synthetic examples for local development and tests.",
+    "pricing_rule_version": 1,
+    "instructions": "Replace these sample rows with your own catalog data before running a real backfill."
+  },
+  "templates": [
+    {
+      "template_id": 101,
+      "text_chars": 2500,
+      "text_lines": 130,
+      "source_sheet_id": "sample-101"
+    },
+    {
+      "template_id": 102,
+      "text_chars": 1800,
+      "text_lines": 80,
+      "source_sheet_id": "sample-102"
+    },
+    {
+      "template_id": 103,
+      "text_chars": 3200,
+      "text_lines": 160,
+      "source_sheet_id": "sample-103"
+    }
+  ]
+}

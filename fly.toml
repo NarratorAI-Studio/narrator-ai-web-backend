@@ -1,0 +1,39 @@
+app = 'your-backend-app'
+primary_region = 'sin'
+
+# Run Alembic migrations during the release phase before machines switch
+# to the new image. If the command fails, the rollout is blocked.
+[deploy]
+  release_command = "alembic upgrade head"
+
+[build]
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[http_service.checks]]
+  grace_period = "5s"
+  interval = "30s"
+  method = "GET"
+  path = "/health"
+  timeout = "5s"
+
+[env]
+  PORT = "8080"
+  NARRATOR_DB_HOST = "your-db-host.internal"
+  NARRATOR_DB_PORT = "5432"
+  NARRATOR_DB_USER = "your_db_user"
+  NARRATOR_DB_NAME = "your_db_name"
+  # Upstream commentary API base URL. Credentials are sensitive and
+  # should be injected with `fly secrets set`, never stored here.
+  # OPEN_FASTAPI_APP_KEY and PRICING_BFF_AUTH_TOKEN are sensitive and
+  # injected via `fly secrets set`, never in this file.
+  OPEN_FASTAPI_BASE = "https://api.example.com"
+  OPEN_FASTAPI_TIMEOUT_SECONDS = "60"
+  OPEN_FASTAPI_TRANSFER_TIMEOUT_SECONDS = "60"
+  # Enable the BackgroundScheduler for run_auto=1 master tasks.
+  ORCHESTRATOR_ENABLED = "true"

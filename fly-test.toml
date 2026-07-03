@@ -1,0 +1,44 @@
+app = 'your-backend-test-app'
+primary_region = 'sin'
+
+# Test environment template. Use a separate app and database from
+# production, then deploy with `fly deploy -c fly-test.toml`.
+
+# Keep migration behavior aligned with production.
+[deploy]
+  release_command = "alembic upgrade head"
+
+[build]
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  # Keep one machine warm for a responsive shared test environment.
+  min_machines_running = 1
+
+[[http_service.checks]]
+  grace_period = "5s"
+  interval = "30s"
+  method = "GET"
+  path = "/health"
+  timeout = "5s"
+
+[env]
+  PORT = "8080"
+  NARRATOR_DB_HOST = "your-test-db-host.internal"
+  NARRATOR_DB_PORT = "5432"
+  NARRATOR_DB_USER = "your_test_db_user"
+  NARRATOR_DB_NAME = "your_test_db_name"
+  OPEN_FASTAPI_BASE = "https://api.example.com"
+  OPEN_FASTAPI_TIMEOUT_SECONDS = "60"
+  OPEN_FASTAPI_TRANSFER_TIMEOUT_SECONDS = "60"
+  # Enable only when the test environment should run background task advancement.
+  ORCHESTRATOR_ENABLED = "true"
+
+# Small shared VM for low-volume test traffic.
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512

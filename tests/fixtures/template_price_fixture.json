@@ -1,0 +1,17 @@
+{
+  "_meta": {
+    "description": "Synthetic calculation-example fixture for fa_template_price backfill tests.",
+    "source": "Public synthetic example used by tests/test_template_price_backfill.py to pin the 5-combo formula matrix.",
+    "pricing_rule_version": 1,
+    "instructions": "Reserved template_id space (>= 99000) avoids collision with ordinary local examples. Do not load this file for live catalog backfills; it is referenced only by tests."
+  },
+  "templates": [
+    {
+      "template_id": 99042,
+      "text_chars": 2500,
+      "text_lines": 130,
+      "source_sheet_id": "sample-99042",
+      "note": "Canonical synthetic example. Combo=original_narration_flash -> 84.50 points."
+    }
+  ]
+}

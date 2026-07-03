@@ -1,0 +1,4367 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Narrator AI Web Backend",
+    "version": "0.1.0",
+    "description": "Hard-price pricing and wallet lifecycle API for narrator-ai-web-backend."
+  },
+  "servers": [
+    {
+      "url": "https://<your-deploy-host>"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health check",
+        "responses": {
+          "200": {
+            "description": "Process is healthy"
+          }
+        }
+      }
+    },
+    "/ready": {
+      "get": {
+        "summary": "Database-backed readiness check",
+        "responses": {
+          "200": {
+            "description": "Database and wallet schema are ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "wallet_tables"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ready"
+                      ]
+                    },
+                    "wallet_tables": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/WalletError"
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "summary": "Prometheus metrics",
+        "responses": {
+          "200": {
+            "description": "Metrics payload"
+          }
+        }
+      }
+    },
+    "/pricing/hard-price": {
+      "post": {
+        "summary": "Query one current hard price",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PricingRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Price found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/WalletError"
+          }
+        }
+      }
+    },
+    "/pricing/hard-price/all": {
+      "get": {
+        "summary": "Query all current hard prices for a template",
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Prices found"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/WalletError"
+          }
+        }
+      }
+    },
+    "/pricing/catalog/{template_id}/tiers": {
+      "get": {
+        "summary": "Read effective tier list for a template (hard-price v2, regression coverage)",
+        "description": "Resolves the v2 catalog tier list per `docs/pricing/v2/catalog-tier-contract.md` §3-§6. Returns template-level entries verbatim, family-level entries scaled by the template's `tier_multiplier` per `rounding_rule_version`. Returns 404 `CATALOG_TIER_MISSING` if neither scope has any tier for this template.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Effective tier list for the template (template-level rows verbatim, family-level rows scaled by `tier_multiplier` per `rounding_rule_version`). Family-inherited Pro tiers carry `pro_surcharge_display` re-derived from the effective Pro − Flash diff for response consistency.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "template_id",
+                        "tier_multiplier",
+                        "tiers"
+                      ],
+                      "properties": {
+                        "template_id": {
+                          "type": "string"
+                        },
+                        "template_family_id": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "tier_multiplier": {
+                          "type": "string",
+                          "description": "Decimal serialized as string to avoid JSON float drift."
+                        },
+                        "tiers": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "tier_code",
+                              "source",
+                              "product_line",
+                              "flash_pro_axis",
+                              "manual_price",
+                              "manual_price_raw",
+                              "system_reference_price",
+                              "system_reference_price_raw",
+                              "currency_unit",
+                              "raw_rate",
+                              "final_rate",
+                              "rounding_rule_version",
+                              "manual_override_warning",
+                              "effective_version"
+                            ],
+                            "properties": {
+                              "tier_code": {
+                                "type": "string"
+                              },
+                              "source": {
+                                "type": "string",
+                                "enum": [
+                                  "template",
+                                  "family"
+                                ]
+                              },
+                              "catalog_entry_id": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "product_line": {
+                                "type": "string"
+                              },
+                              "mode": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "quality": {
+                                "type": "string",
+                                "nullable": true,
+                                "enum": [
+                                  "flash",
+                                  "pro",
+                                  null
+                                ]
+                              },
+                              "flash_pro_axis": {
+                                "type": "string",
+                                "enum": [
+                                  "required",
+                                  "optional"
+                                ]
+                              },
+                              "manual_price": {
+                                "type": "integer",
+                                "minimum": 0
+                              },
+                              "manual_price_raw": {
+                                "type": "integer",
+                                "minimum": 0
+                              },
+                              "pro_surcharge_display": {
+                                "type": "integer",
+                                "nullable": true,
+                                "minimum": 0
+                              },
+                              "system_reference_price": {
+                                "type": "integer",
+                                "minimum": 0
+                              },
+                              "system_reference_price_raw": {
+                                "type": "integer",
+                                "minimum": 0
+                              },
+                              "currency_unit": {
+                                "type": "string"
+                              },
+                              "raw_rate": {
+                                "type": "string",
+                                "description": "Decimal serialized as string."
+                              },
+                              "final_rate": {
+                                "type": "string",
+                                "description": "Decimal serialized as string."
+                              },
+                              "rounding_rule_version": {
+                                "type": "string"
+                              },
+                              "manual_override_warning": {
+                                "type": "boolean"
+                              },
+                              "effective_version": {
+                                "type": "integer",
+                                "minimum": 1
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/NarratorMetadataAuthFailure"
+          },
+          "404": {
+            "description": "No catalog entry exists for this template after family fallback (`CATALOG_TIER_MISSING`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message",
+                        "retryable",
+                        "details"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "CATALOG_TIER_MISSING"
+                          ]
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "retryable": {
+                          "type": "boolean",
+                          "enum": [
+                            false
+                          ]
+                        },
+                        "details": {
+                          "type": "object",
+                          "required": [
+                            "template_id"
+                          ],
+                          "properties": {
+                            "template_id": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Family-level inheritance produced a Pro/Flash pair that no longer satisfies the surcharge invariant after multiplier rounding (`CATALOG_INHERITED_INVARIANT_VIOLATION`). Distinct from the upsert-side `CATALOG_PRO_SURCHARGE_MISMATCH` so admin tooling can differentiate operator-typed errors from inheritance-rounding drift.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message",
+                        "retryable",
+                        "details"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "CATALOG_INHERITED_INVARIANT_VIOLATION"
+                          ]
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "retryable": {
+                          "type": "boolean",
+                          "enum": [
+                            false
+                          ]
+                        },
+                        "details": {
+                          "type": "object",
+                          "required": [
+                            "template_id",
+                            "product_line",
+                            "flash_manual_price",
+                            "pro_manual_price",
+                            "inherited_surcharge",
+                            "derived_surcharge"
+                          ],
+                          "properties": {
+                            "template_id": {
+                              "type": "string"
+                            },
+                            "product_line": {
+                              "type": "string"
+                            },
+                            "mode": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "flash_manual_price": {
+                              "type": "integer"
+                            },
+                            "pro_manual_price": {
+                              "type": "integer"
+                            },
+                            "inherited_surcharge": {
+                              "type": "integer",
+                              "nullable": true
+                            },
+                            "derived_surcharge": {
+                              "type": "integer"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The catalog persistence backend is temporarily unavailable (`CATALOG_PERSISTENCE_ERROR`). Retryable. Internal class names and DB error details are intentionally redacted; consult app logs for diagnosis.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message",
+                        "retryable",
+                        "details"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "CATALOG_PERSISTENCE_ERROR"
+                          ]
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "retryable": {
+                          "type": "boolean",
+                          "enum": [
+                            true
+                          ]
+                        },
+                        "details": {
+                          "type": "object",
+                          "description": "Always empty for this endpoint — diagnostic detail is server-side only.",
+                          "additionalProperties": false
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Batch upsert tier entries for a template (hard-price v2 admin, regression coverage)",
+        "description": "Atomic batch upsert of one or more tier rows for `template_id`. All submitted tiers persist or none — Pro<Flash, surcharge invariant, axis pairing, and rounding-rule whitelist all validated as a set against the merged (submitted ∪ existing-latest-enabled) view. Each successful tier gets `effective_version = max(existing for that tier) + 1` and a server-computed `manual_override_warning`. `updated_by` is resolved server-side from `X-Web-App-Key` → `users.id`.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "tiers"
+                ],
+                "properties": {
+                  "tiers": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "tier_code",
+                        "product_line",
+                        "flash_pro_axis",
+                        "manual_price",
+                        "system_reference_price",
+                        "raw_rate",
+                        "final_rate",
+                        "rounding_rule_version"
+                      ],
+                      "properties": {
+                        "tier_code": {
+                          "type": "string"
+                        },
+                        "product_line": {
+                          "type": "string"
+                        },
+                        "mode": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "quality": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "flash_pro_axis": {
+                          "type": "string",
+                          "enum": [
+                            "required",
+                            "optional"
+                          ]
+                        },
+                        "manual_price": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "pro_surcharge_display": {
+                          "type": "integer",
+                          "nullable": true,
+                          "minimum": 0
+                        },
+                        "system_reference_price": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "raw_rate": {
+                          "type": "string"
+                        },
+                        "final_rate": {
+                          "type": "string"
+                        },
+                        "rounding_rule_version": {
+                          "type": "string"
+                        },
+                        "currency_unit": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "All submitted tiers written; freshly-inserted rows returned with assigned `effective_version`, computed `manual_override_warning`, and resolved `updated_by`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "template_id",
+                        "tiers"
+                      ],
+                      "properties": {
+                        "template_id": {
+                          "type": "string"
+                        },
+                        "tiers": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed JSON or missing `tiers` array (`BAD_REQUEST`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/NarratorMetadataAuthFailure"
+          },
+          "404": {
+            "description": "Template not registered in `pricing_template_v2` (`CATALOG_TEMPLATE_NOT_FOUND`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Catalog invariant violation. `code` is one of `CATALOG_PRO_BELOW_FLASH`, `CATALOG_PRO_SURCHARGE_MISMATCH`, `CATALOG_ROUNDING_VERSION_UNKNOWN`, `CATALOG_FLASH_PRO_AXIS_VIOLATION`, or generic `CATALOG_VALIDATION_ERROR` for structural payload issues. `details` carries the relevant tier_code + violated values.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Catalog persistence layer is unavailable (`CATALOG_PERSISTENCE_ERROR`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pricing/catalog/{template_id}/history": {
+      "get": {
+        "summary": "All tier versions for a template, including disabled rows (hard-price v2 admin audit, regression coverage)",
+        "description": "Returns every `pricing_catalog_v2_entry` row for `template_id` grouped by `tier_code` and ordered newest-first by `effective_version`. Includes disabled rows so the admin UX can render the full audit trail per requirement.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "History grouped by tier_code, newest version first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "template_id",
+                        "tiers"
+                      ],
+                      "properties": {
+                        "template_id": {
+                          "type": "string"
+                        },
+                        "tiers": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/NarratorMetadataAuthFailure"
+          },
+          "404": {
+            "description": "No history rows for `template_id` (`CATALOG_TIER_MISSING`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Catalog persistence layer is unavailable (`CATALOG_PERSISTENCE_ERROR`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pricing/srt-realtime-quote": {
+      "post": {
+        "summary": "Compute realtime estimated points for a custom-template SRT (product requirement Plan ③/④)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SrtRealtimeQuoteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Realtime quote computed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "503": {
+            "$ref": "#/components/responses/WalletError"
+          }
+        }
+      }
+    },
+    "/wallet/quotes": {
+      "post": {
+        "summary": "Pin a server-approved hard-price quote",
+        "security": [
+          {
+            "walletBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuoteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Quote created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/WalletError"
+          },
+          "409": {
+            "$ref": "#/components/responses/WalletError"
+          },
+          "503": {
+            "$ref": "#/components/responses/WalletError"
+          }
+        }
+      }
+    },
+    "/wallet/freezes": {
+      "post": {
+        "summary": "Freeze the pinned quote amount",
+        "security": [
+          {
+            "walletBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FreezeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Idempotent replay"
+          },
+          "201": {
+            "description": "Transaction frozen"
+          },
+          "402": {
+            "$ref": "#/components/responses/WalletError"
+          },
+          "409": {
+            "$ref": "#/components/responses/WalletError"
+          },
+          "410": {
+            "$ref": "#/components/responses/WalletError"
+          },
+          "503": {
+            "$ref": "#/components/responses/WalletError"
+          }
+        }
+      }
+    },
+    "/wallet/confirms": {
+      "post": {
+        "summary": "Confirm a frozen wallet transaction",
+        "security": [
+          {
+            "walletBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Transaction confirmed or replayed"
+          },
+          "400": {
+            "$ref": "#/components/responses/WalletError"
+          },
+          "404": {
+            "$ref": "#/components/responses/WalletError"
+          },
+          "409": {
+            "$ref": "#/components/responses/WalletError"
+          },
+          "503": {
+            "$ref": "#/components/responses/WalletError"
+          }
+        }
+      }
+    },
+    "/wallet/refunds": {
+      "post": {
+        "summary": "Refund a frozen wallet transaction",
+        "security": [
+          {
+            "walletBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefundRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Transaction refunded or replayed"
+          },
+          "400": {
+            "$ref": "#/components/responses/WalletError"
+          },
+          "404": {
+            "$ref": "#/components/responses/WalletError"
+          },
+          "409": {
+            "$ref": "#/components/responses/WalletError"
+          },
+          "503": {
+            "$ref": "#/components/responses/WalletError"
+          }
+        }
+      }
+    },
+    "/finance/refunds/overbill": {
+      "post": {
+        "summary": "Credit a confirmed hard-price overbill",
+        "security": [
+          {
+            "walletBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OverbillRefundRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Overbill refund credited or replayed"
+          },
+          "400": {
+            "$ref": "#/components/responses/WalletError"
+          },
+          "404": {
+            "$ref": "#/components/responses/WalletError"
+          },
+          "409": {
+            "$ref": "#/components/responses/WalletError"
+          },
+          "503": {
+            "$ref": "#/components/responses/WalletError"
+          }
+        }
+      }
+    },
+    "/finance/quota-board": {
+      "get": {
+        "summary": "Finance per-account wallet quota board",
+        "security": [
+          {
+            "walletBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WebTenantId"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "default": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Quota board returned"
+          },
+          "400": {
+            "$ref": "#/components/responses/WalletError"
+          },
+          "401": {
+            "$ref": "#/components/responses/WalletError"
+          },
+          "503": {
+            "$ref": "#/components/responses/WalletError"
+          }
+        }
+      }
+    },
+    "/wallet/transactions/{wallet_transaction_id}": {
+      "get": {
+        "summary": "Query a wallet transaction by id",
+        "security": [
+          {
+            "walletBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WalletTransactionId"
+          },
+          {
+            "$ref": "#/components/parameters/WebTenantId"
+          },
+          {
+            "$ref": "#/components/parameters/WebUserId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Transaction found"
+          },
+          "404": {
+            "$ref": "#/components/responses/WalletError"
+          }
+        }
+      }
+    },
+    "/wallet/transactions/by-order/{web_order_id}": {
+      "get": {
+        "summary": "Query a wallet transaction by order",
+        "security": [
+          {
+            "walletBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WebOrderId"
+          },
+          {
+            "$ref": "#/components/parameters/WebTenantId"
+          },
+          {
+            "$ref": "#/components/parameters/WebUserId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Transaction found"
+          },
+          "404": {
+            "$ref": "#/components/responses/WalletError"
+          }
+        }
+      }
+    },
+    "/wallet/transactions/by-idempotency-key/{idempotency_key}": {
+      "get": {
+        "summary": "Query a wallet transaction by idempotency key",
+        "security": [
+          {
+            "walletBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKeyPath"
+          },
+          {
+            "$ref": "#/components/parameters/WebTenantId"
+          },
+          {
+            "$ref": "#/components/parameters/WebUserId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Transaction found"
+          },
+          "404": {
+            "$ref": "#/components/responses/WalletError"
+          }
+        }
+      }
+    },
+    "/pricing/movie-baokuan": {
+      "get": {
+        "summary": "List baokuan templates with v2 catalog tiers (HP-XX)",
+        "description": "Proxies upstream /v2/res/movie-baokuan and augments each returned item with complete v2 catalog tiers from pricing_template_v2 + pricing_catalog_v2_entry. Join key: upstream item.code such as xy0046 maps to template_id 46. Items without a complete 5-tier catalog are omitted.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "platform_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Filter by platform (1=快手, 2=抖音, 3=油管, 4=TikTok)"
+          },
+          {
+            "name": "category_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Filter by category id (1..9 per upstream dict)"
+          },
+          {
+            "name": "name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Free-text name search"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "1-based page number"
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Page size"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Upstream payload forwarded; success data.items[] contains only items with complete v2 catalog tiers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MovieBaokuanResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication failed. One of: Bearer missing/invalid (UNAUTHORIZED); X-Web-App-Key missing/empty (WEB_APP_KEY_MISSING); X-Web-App-Key format invalid — must match `grid_<22 base62>` (WEB_APP_KEY_INVALID); X-Web-App-Key well-formed but not present in the `users` table (WEB_APP_KEY_UNKNOWN)."
+          },
+          "502": {
+            "description": "Upstream returned a non-success HTTP status, unparseable body, a malformed success payload, or a response larger than MAX_UPSTREAM_BYTES (UPSTREAM_HTTP_ERROR / UPSTREAM_UNREACHABLE / UPSTREAM_DECODE_ERROR / UPSTREAM_SCHEMA_ERROR / UPSTREAM_RESPONSE_TOO_LARGE)."
+          },
+          "503": {
+            "description": "Pricing BFF token not configured (PRICING_BFF_NOT_CONFIGURED), upstream not configured (UPSTREAM_NOT_CONFIGURED), local DB unavailable, upstream 5xx (UPSTREAM_HTTP_ERROR), or users-table lookup raised an exception (USER_LOOKUP_FAILED, retryable)."
+          },
+          "504": {
+            "description": "Upstream movie-baokuan did not respond in time (UPSTREAM_TIMEOUT)."
+          }
+        }
+      }
+    },
+    "/account/me": {
+      "get": {
+        "summary": "Get the current end-user's profile + balance",
+        "description": "Returns the row in `users` keyed by the supplied `X-Web-App-Key`. Source-of-truth for end-user identity and balance — replaces the legacy `narrator-ai-web` direct-to-upstream `/api/account/balance` path in the reseller architecture. `mobile` is masked at the API boundary (first 3 + middle `*` + last 3); the raw value never leaves backend. Nullable fields render as JSON `null`, not omitted, not `\"\"`.",
+        "security": [
+          {
+            "webAppKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User found; profile + balance returned.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "user_id",
+                        "nickname",
+                        "mobile",
+                        "email",
+                        "balance",
+                        "company_name"
+                      ],
+                      "properties": {
+                        "user_id": {
+                          "type": "integer",
+                          "description": "users.id (UNIQUE auto-increment, surfaced as user_id in the API)"
+                        },
+                        "nickname": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "mobile": {
+                          "type": "string",
+                          "nullable": true,
+                          "description": "Masked at API boundary, e.g. 139*****222."
+                        },
+                        "email": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "balance": {
+                          "type": "string",
+                          "description": "users.balance_points as a 2-decimal string (e.g. \"2340.02\"); string-typed to dodge JSON float rounding."
+                        },
+                        "company_name": {
+                          "type": "string",
+                          "nullable": true
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "X-Web-App-Key missing / malformed / unknown (WEB_APP_KEY_MISSING / WEB_APP_KEY_INVALID / WEB_APP_KEY_UNKNOWN)."
+          },
+          "503": {
+            "description": "Users-table lookup failed (USER_LOOKUP_FAILED, retryable)."
+          }
+        }
+      }
+    },
+    "/narrator/narrator-types": {
+      "get": {
+        "summary": "List narrator types ",
+        "description": "Thin wrapper around upstream `GET /v1/task/get_narrator_types`. Upstream payload is forwarded verbatim. Backend's master `OPEN_FASTAPI_APP_KEY` authenticates upstream — the caller's `X-Web-App-Key` is only used for end-user identity + reseller `users` table check.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "terminal_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "default"
+            },
+            "description": "Upstream terminal-type partition (default: `default`)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/NarratorMetadataUpstream"
+          },
+          "401": {
+            "$ref": "#/components/responses/NarratorMetadataAuthFailure"
+          },
+          "502": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamFailure"
+          },
+          "503": {
+            "$ref": "#/components/responses/NarratorMetadataServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamTimeout"
+          }
+        }
+      }
+    },
+    "/narrator/types": {
+      "get": {
+        "summary": "List v1 narrator types ",
+        "description": "Thin wrapper around upstream `GET /v1/narrator/types`. Upstream payload forwarded verbatim.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/NarratorMetadataUpstream"
+          },
+          "401": {
+            "$ref": "#/components/responses/NarratorMetadataAuthFailure"
+          },
+          "502": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamFailure"
+          },
+          "503": {
+            "$ref": "#/components/responses/NarratorMetadataServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamTimeout"
+          }
+        }
+      }
+    },
+    "/narrator/models": {
+      "get": {
+        "summary": "List v1 narrator models ",
+        "description": "Thin wrapper around upstream `GET /v1/narrator/models`. Upstream payload forwarded verbatim.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/NarratorMetadataUpstream"
+          },
+          "401": {
+            "$ref": "#/components/responses/NarratorMetadataAuthFailure"
+          },
+          "502": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamFailure"
+          },
+          "503": {
+            "$ref": "#/components/responses/NarratorMetadataServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamTimeout"
+          }
+        }
+      }
+    },
+    "/narrator/model-versions": {
+      "get": {
+        "summary": "List narrator model versions ",
+        "description": "Thin wrapper around upstream `GET /v1/task/get_model_versions`. Upstream payload forwarded verbatim.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "terminal_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "default"
+            },
+            "description": "Upstream terminal-type partition (default: `default`)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/NarratorMetadataUpstream"
+          },
+          "401": {
+            "$ref": "#/components/responses/NarratorMetadataAuthFailure"
+          },
+          "502": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamFailure"
+          },
+          "503": {
+            "$ref": "#/components/responses/NarratorMetadataServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamTimeout"
+          }
+        }
+      }
+    },
+    "/narrator/bgm": {
+      "get": {
+        "summary": "List v1 narrator BGM ",
+        "description": "Thin wrapper around upstream `GET /v1/narrator/bgm`. Upstream payload forwarded verbatim.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/NarratorMetadataUpstream"
+          },
+          "401": {
+            "$ref": "#/components/responses/NarratorMetadataAuthFailure"
+          },
+          "502": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamFailure"
+          },
+          "503": {
+            "$ref": "#/components/responses/NarratorMetadataServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamTimeout"
+          }
+        }
+      }
+    },
+    "/narrator/bgm-list": {
+      "get": {
+        "summary": "List v2 movie BGM ",
+        "description": "Thin wrapper around upstream `GET /v2/res/movie-bgm`. Upstream payload forwarded verbatim.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "1-based page number."
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Page size."
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/NarratorMetadataUpstream"
+          },
+          "401": {
+            "$ref": "#/components/responses/NarratorMetadataAuthFailure"
+          },
+          "502": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamFailure"
+          },
+          "503": {
+            "$ref": "#/components/responses/NarratorMetadataServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamTimeout"
+          }
+        }
+      }
+    },
+    "/narrator/dubbing-list": {
+      "get": {
+        "summary": "List v2 movie dubbing voices ",
+        "description": "Thin wrapper around upstream `GET /v2/res/movie-dubbing`. Upstream payload forwarded verbatim.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "1-based page number."
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Page size."
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/NarratorMetadataUpstream"
+          },
+          "401": {
+            "$ref": "#/components/responses/NarratorMetadataAuthFailure"
+          },
+          "502": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamFailure"
+          },
+          "503": {
+            "$ref": "#/components/responses/NarratorMetadataServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamTimeout"
+          }
+        }
+      }
+    },
+    "/narrator/template-meta": {
+      "get": {
+        "summary": "Get baokuan template platform/category metadata ",
+        "description": "Thin wrapper around upstream `GET /v2/res/baokuan/meta`. Upstream payload forwarded verbatim. Used by the web-side template page to populate the platform / category dropdowns.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/NarratorMetadataUpstream"
+          },
+          "401": {
+            "$ref": "#/components/responses/NarratorMetadataAuthFailure"
+          },
+          "502": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamFailure"
+          },
+          "503": {
+            "$ref": "#/components/responses/NarratorMetadataServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamTimeout"
+          }
+        }
+      }
+    },
+    "/cloud-drive/upload-url": {
+      "post": {
+        "summary": "Create a presigned upload URL for Web personal cloud-drive ",
+        "description": "Checks Web-user quota, reserves the requested file_size against `users.cloud_drive_quota_bytes`, calls internal cloud-drive `POST /v2/files/upload/presigned-url`, then maps the returned file_id to the authenticated Web user.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloudDriveUploadUrlRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CloudDriveSuccess"
+          },
+          "400": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "401": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "409": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "502": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "503": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "504": {
+            "$ref": "#/components/responses/CloudDriveError"
+          }
+        }
+      }
+    },
+    "/cloud-drive/upload-callback": {
+      "post": {
+        "summary": "Confirm a direct upload and complete ownership mapping ",
+        "description": "For successful local uploads, forwards callback to internal cloud-drive and marks the reserved Web file completed. Local SRT uploads must include a sha256 value via `srt_file_hash`, `sha256`, or `file_sha256`. Failed callbacks release reserved quota.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloudDriveUploadCallbackRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CloudDriveSuccess"
+          },
+          "400": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "401": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "404": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "502": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "503": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "504": {
+            "$ref": "#/components/responses/CloudDriveError"
+          }
+        }
+      }
+    },
+    "/cloud-drive/download-url": {
+      "post": {
+        "summary": "Create a presigned download URL for an owned file ",
+        "description": "Verifies that the requested file_id belongs to the authenticated Web user before calling internal cloud-drive `POST /v2/files/download/presigned-url`.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloudDriveFileIdRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CloudDriveSuccess"
+          },
+          "400": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "401": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "404": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "502": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "503": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "504": {
+            "$ref": "#/components/responses/CloudDriveError"
+          }
+        }
+      }
+    },
+    "/cloud-drive/files": {
+      "get": {
+        "summary": "List authenticated user's personal cloud-drive files ",
+        "description": "Returns local tenant-scoped file rows. Cross-user files are never listed.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "order_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "created_at",
+                "file_size",
+                "completed_time"
+              ]
+            }
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "default": "desc"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CloudDriveSuccess"
+          },
+          "400": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "401": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "503": {
+            "$ref": "#/components/responses/CloudDriveError"
+          }
+        }
+      }
+    },
+    "/cloud-drive/files/{file_id}": {
+      "delete": {
+        "summary": "Delete an owned personal cloud-drive file ",
+        "description": "Checks tenant ownership before forwarding delete to internal cloud-drive. Missing and cross-tenant file_ids both return 404.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CloudDriveSuccess"
+          },
+          "401": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "404": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "502": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "503": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "504": {
+            "$ref": "#/components/responses/CloudDriveError"
+          }
+        }
+      }
+    },
+    "/cloud-drive/storage-usage": {
+      "get": {
+        "summary": "Get authenticated user's personal cloud-drive storage usage ",
+        "description": "Computes usage from local `user_cloud_files` rather than internal cloud-drive master-account totals.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CloudDriveSuccess"
+          },
+          "401": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "503": {
+            "$ref": "#/components/responses/CloudDriveError"
+          }
+        }
+      }
+    },
+    "/cloud-drive/transfer": {
+      "post": {
+        "summary": "Create a transfer upload task ",
+        "description": "Creates an internal cloud-drive transfer task for the authenticated Web user. If file_size is provided, quota is checked before the upstream call; otherwise the transfer is created as size-unknown pending and quota is enforced when upstream metadata returns a real size. Transfer-link hash may be empty in v1.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloudDriveTransferRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CloudDriveSuccess"
+          },
+          "400": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "401": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "409": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "502": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "503": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "504": {
+            "$ref": "#/components/responses/CloudDriveError"
+          }
+        }
+      },
+      "get": {
+        "summary": "List authenticated user's transfer records ",
+        "description": "Refreshes owned transfer status/progress from internal cloud-drive `GET /v2/files/user/filelist`, persists current local lifecycle state, then returns tenant-scoped transfer records.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "order_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "created_at"
+            }
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "default": "desc"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CloudDriveSuccess"
+          },
+          "400": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "401": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "503": {
+            "$ref": "#/components/responses/CloudDriveError"
+          }
+        }
+      }
+    },
+    "/cloud-drive/files/batch-delete": {
+      "post": {
+        "summary": "Batch-delete owned cloud-drive files ",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloudDriveBatchDeleteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CloudDriveSuccess"
+          },
+          "400": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "401": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "404": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "502": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "503": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "504": {
+            "$ref": "#/components/responses/CloudDriveError"
+          }
+        }
+      }
+    },
+    "/cloud-drive/transfer/batch-delete": {
+      "post": {
+        "summary": "Batch-delete owned transfer files ",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloudDriveBatchDeleteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CloudDriveSuccess"
+          },
+          "400": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "401": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "404": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "502": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "503": {
+            "$ref": "#/components/responses/CloudDriveError"
+          },
+          "504": {
+            "$ref": "#/components/responses/CloudDriveError"
+          }
+        }
+      }
+    },
+    "/narrator/ocr-extraction/create": {
+      "post": {
+        "summary": "Create subtitle extraction task (group G, regression coverage)",
+        "description": "Proxies `POST /v2/task/ocr_extraction/create` to upstream using the caller's `X-Web-App-Key` as `app-key`.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/NarratorMetadataUpstream"
+          },
+          "401": {
+            "$ref": "#/components/responses/NarratorMetadataAuthFailure"
+          },
+          "502": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamFailure"
+          },
+          "503": {
+            "$ref": "#/components/responses/NarratorMetadataServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamTimeout"
+          }
+        }
+      }
+    },
+    "/narrator/ocr-extraction/query/{task_id}": {
+      "parameters": [
+        {
+          "name": "task_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "summary": "Query subtitle extraction task status (group G, regression coverage)",
+        "description": "Proxies `GET /v2/task/ocr_extraction/query/{task_id}` to upstream.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/NarratorMetadataUpstream"
+          },
+          "401": {
+            "$ref": "#/components/responses/NarratorMetadataAuthFailure"
+          },
+          "502": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamFailure"
+          },
+          "503": {
+            "$ref": "#/components/responses/NarratorMetadataServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamTimeout"
+          }
+        }
+      }
+    },
+    "/narrator/subtitle-removal/create": {
+      "post": {
+        "summary": "Create subtitle removal task (group G, regression coverage)",
+        "description": "Proxies `POST /v2/task/subtitle_removal/create` to upstream.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/NarratorMetadataUpstream"
+          },
+          "401": {
+            "$ref": "#/components/responses/NarratorMetadataAuthFailure"
+          },
+          "502": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamFailure"
+          },
+          "503": {
+            "$ref": "#/components/responses/NarratorMetadataServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamTimeout"
+          }
+        }
+      }
+    },
+    "/narrator/subtitle-removal/query/{task_id}": {
+      "parameters": [
+        {
+          "name": "task_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "summary": "Query subtitle removal task status (group G, regression coverage)",
+        "description": "Proxies `GET /v2/task/subtitle_removal/query/{task_id}` to upstream.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/NarratorMetadataUpstream"
+          },
+          "401": {
+            "$ref": "#/components/responses/NarratorMetadataAuthFailure"
+          },
+          "502": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamFailure"
+          },
+          "503": {
+            "$ref": "#/components/responses/NarratorMetadataServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamTimeout"
+          }
+        }
+      }
+    },
+    "/narrator/commentary/list": {
+      "get": {
+        "summary": "List commentary tasks (group E, regression coverage)",
+        "description": "Proxies `GET /v2/task/commentary/list` to upstream.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "task_type",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/NarratorMetadataUpstream"
+          },
+          "401": {
+            "$ref": "#/components/responses/NarratorMetadataAuthFailure"
+          },
+          "502": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamFailure"
+          },
+          "503": {
+            "$ref": "#/components/responses/NarratorMetadataServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamTimeout"
+          }
+        }
+      }
+    },
+    "/narrator/commentary/query/{task_id}": {
+      "parameters": [
+        {
+          "name": "task_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "summary": "Query commentary task detail (group E, regression coverage)",
+        "description": "Proxies `GET /v2/task/commentary/query/{task_id}` to upstream.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/NarratorMetadataUpstream"
+          },
+          "401": {
+            "$ref": "#/components/responses/NarratorMetadataAuthFailure"
+          },
+          "502": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamFailure"
+          },
+          "503": {
+            "$ref": "#/components/responses/NarratorMetadataServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamTimeout"
+          }
+        }
+      }
+    },
+    "/narrator/commentary/writing": {
+      "get": {
+        "summary": "Get generated writing content (group E, regression coverage)",
+        "description": "Proxies `GET /v2/task/commentary/get_generate_writed` to upstream.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "file_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/NarratorMetadataUpstream"
+          },
+          "401": {
+            "$ref": "#/components/responses/NarratorMetadataAuthFailure"
+          },
+          "502": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamFailure"
+          },
+          "503": {
+            "$ref": "#/components/responses/NarratorMetadataServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamTimeout"
+          }
+        }
+      },
+      "post": {
+        "summary": "Save modified writing content (group E, regression coverage)",
+        "description": "Proxies `POST /v2/task/commentary/save_generate_writed` to upstream.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/NarratorMetadataUpstream"
+          },
+          "401": {
+            "$ref": "#/components/responses/NarratorMetadataAuthFailure"
+          },
+          "502": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamFailure"
+          },
+          "503": {
+            "$ref": "#/components/responses/NarratorMetadataServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamTimeout"
+          }
+        }
+      }
+    },
+    "/narrator/commentary/consume-budget": {
+      "post": {
+        "summary": "Compute commentary task total points cost (group E, regression coverage)",
+        "description": "Proxies `POST /v2/task/commentary/consume_budget` to upstream.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/NarratorMetadataUpstream"
+          },
+          "401": {
+            "$ref": "#/components/responses/NarratorMetadataAuthFailure"
+          },
+          "502": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamFailure"
+          },
+          "503": {
+            "$ref": "#/components/responses/NarratorMetadataServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamTimeout"
+          }
+        }
+      }
+    },
+    "/narrator/commentary/search-media": {
+      "get": {
+        "summary": "Search media information (group E, regression coverage)",
+        "description": "Proxies `GET /v2/task/commentary/search_media_information` with a 90-second upstream timeout (upstream search is slow).",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/NarratorMetadataUpstream"
+          },
+          "401": {
+            "$ref": "#/components/responses/NarratorMetadataAuthFailure"
+          },
+          "502": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamFailure"
+          },
+          "503": {
+            "$ref": "#/components/responses/NarratorMetadataServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamTimeout"
+          }
+        }
+      }
+    },
+    "/narrator/movie-sucai": {
+      "get": {
+        "summary": "List movie material library (group E, regression coverage)",
+        "description": "Proxies `GET /v2/res/movie-sucai` to upstream.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "name",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/NarratorMetadataUpstream"
+          },
+          "401": {
+            "$ref": "#/components/responses/NarratorMetadataAuthFailure"
+          },
+          "502": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamFailure"
+          },
+          "503": {
+            "$ref": "#/components/responses/NarratorMetadataServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamTimeout"
+          }
+        }
+      }
+    },
+    "/narrator/commentary/material-verification": {
+      "post": {
+        "summary": "Full material verification for commentary task (group E, regression coverage)",
+        "description": "Proxies `POST /v2/task/commentary/material_verification` to upstream.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/NarratorMetadataUpstream"
+          },
+          "401": {
+            "$ref": "#/components/responses/NarratorMetadataAuthFailure"
+          },
+          "502": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamFailure"
+          },
+          "503": {
+            "$ref": "#/components/responses/NarratorMetadataServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamTimeout"
+          }
+        }
+      }
+    },
+    "/narrator/commentary/create-popular-learning": {
+      "post": {
+        "summary": "Create popular-learning task (group B, regression coverage)",
+        "description": "Proxies `POST /v2/task/commentary/create_popular_learning` to upstream.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/NarratorMetadataUpstream"
+          },
+          "401": {
+            "$ref": "#/components/responses/NarratorMetadataAuthFailure"
+          },
+          "502": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamFailure"
+          },
+          "503": {
+            "$ref": "#/components/responses/NarratorMetadataServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamTimeout"
+          }
+        }
+      }
+    },
+    "/narrator/commentary/create-subsync": {
+      "post": {
+        "summary": "Create subsync task (group B, regression coverage)",
+        "description": "Proxies `POST /v2/task/commentary/create_subsync_task` to upstream.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/NarratorMetadataUpstream"
+          },
+          "401": {
+            "$ref": "#/components/responses/NarratorMetadataAuthFailure"
+          },
+          "502": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamFailure"
+          },
+          "503": {
+            "$ref": "#/components/responses/NarratorMetadataServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamTimeout"
+          }
+        }
+      }
+    },
+    "/narrator/commentary/create-generate-writing": {
+      "post": {
+        "summary": "Create generate-writing task (group B, regression coverage)",
+        "description": "Proxies `POST /v2/task/commentary/create_generate_writing` to upstream.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/NarratorMetadataUpstream"
+          },
+          "401": {
+            "$ref": "#/components/responses/NarratorMetadataAuthFailure"
+          },
+          "502": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamFailure"
+          },
+          "503": {
+            "$ref": "#/components/responses/NarratorMetadataServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamTimeout"
+          }
+        }
+      }
+    },
+    "/narrator/commentary/create-clip-data": {
+      "post": {
+        "summary": "Create clip-data task (group B, regression coverage)",
+        "description": "Proxies `POST /v2/task/commentary/create_generate_clip_data` to upstream.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/NarratorMetadataUpstream"
+          },
+          "401": {
+            "$ref": "#/components/responses/NarratorMetadataAuthFailure"
+          },
+          "502": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamFailure"
+          },
+          "503": {
+            "$ref": "#/components/responses/NarratorMetadataServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamTimeout"
+          }
+        }
+      }
+    },
+    "/narrator/commentary/create-fast-writing": {
+      "post": {
+        "summary": "Create fast-writing task (group B, regression coverage)",
+        "description": "Proxies `POST /v2/task/commentary/create_fast_generate_writing` to upstream.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/NarratorMetadataUpstream"
+          },
+          "401": {
+            "$ref": "#/components/responses/NarratorMetadataAuthFailure"
+          },
+          "502": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamFailure"
+          },
+          "503": {
+            "$ref": "#/components/responses/NarratorMetadataServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamTimeout"
+          }
+        }
+      }
+    },
+    "/narrator/commentary/create-fast-writing-clip-data": {
+      "post": {
+        "summary": "Create fast-writing clip-data task (group B, regression coverage)",
+        "description": "Proxies `POST /v2/task/commentary/create_generate_fast_writing_clip_data` to upstream.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/NarratorMetadataUpstream"
+          },
+          "401": {
+            "$ref": "#/components/responses/NarratorMetadataAuthFailure"
+          },
+          "502": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamFailure"
+          },
+          "503": {
+            "$ref": "#/components/responses/NarratorMetadataServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamTimeout"
+          }
+        }
+      }
+    },
+    "/narrator/commentary/create-video-composing": {
+      "post": {
+        "summary": "Create video-composing task (group B, regression coverage)",
+        "description": "Proxies `POST /v2/task/commentary/create_video_composing` to upstream.",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/NarratorMetadataUpstream"
+          },
+          "401": {
+            "$ref": "#/components/responses/NarratorMetadataAuthFailure"
+          },
+          "502": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamFailure"
+          },
+          "503": {
+            "$ref": "#/components/responses/NarratorMetadataServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/NarratorMetadataUpstreamTimeout"
+          }
+        }
+      }
+    },
+    "/pricing/quote": {
+      "post": {
+        "summary": "Generate a hard-price v2 quote ",
+        "description": "Computes and persists a quote per `docs/pricing/v2/quote-snapshot-contract.md` §3-§5. Wallet preflight (§5) returns 402 `WALLET_INSUFFICIENT_BALANCE`. Quote stays valid until `expires_at` (default 5min TTL, controlled by `QUOTE_TTL_SECONDS`).",
+        "security": [
+          {
+            "pricingBearer": [],
+            "webAppKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PricingQuoteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Quote generated and persisted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PricingQuoteResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Body not a JSON object (BAD_REQUEST)."
+          },
+          "401": {
+            "description": "Bearer / X-Web-App-Key missing or unknown."
+          },
+          "402": {
+            "description": "Wallet balance below required final_charge_price (WALLET_INSUFFICIENT_BALANCE)."
+          },
+          "404": {
+            "description": "No catalog entry for the requested template (CATALOG_TIER_MISSING)."
+          },
+          "422": {
+            "description": "Validation failure: QUOTE_COMBO_KEY_INVALID, CUSTOM_SRT_HASH_MISSING, or QUOTE_VALIDATION_ERROR."
+          },
+          "500": {
+            "description": "Server-side breakdown invariant violated (QUOTE_BREAKDOWN_MISMATCH)."
+          },
+          "503": {
+            "description": "Pricing backend unavailable (QUOTE_PERSISTENCE_ERROR, retryable)."
+          }
+        }
+      }
+    },
+    "/narrator/tasks": {
+      "post": {
+        "summary": "Create or upsert a master task",
+        "description": "Persist a narrator master task scoped to the caller (`X-Web-App-Key` → `users.id`). If the body carries a `narrator_task_id`, the row is upserted (preserves the original ID + `created_at`; rejects cross-tenant overwrite with 403). If the body has no `narrator_task_id`, the server assigns one and returns the row with server-stamped `created_at` / `updated_at`.",
+        "security": [
+          {
+            "webAppKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NarratorTaskBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Task created (no narrator_task_id supplied) or upserted (same-tenant).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NarratorTaskResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Body is not a JSON object (BAD_REQUEST)."
+          },
+          "401": {
+            "description": "X-Web-App-Key missing / malformed / unknown (WEB_APP_KEY_MISSING / WEB_APP_KEY_INVALID / WEB_APP_KEY_UNKNOWN)."
+          },
+          "403": {
+            "description": "narrator_task_id in body already exists but belongs to another user (FORBIDDEN). No silent overwrite.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Narrator tasks store temporarily unavailable (NARRATOR_TASKS_DB_UNAVAILABLE, retryable)."
+          }
+        }
+      },
+      "get": {
+        "summary": "List the caller's master tasks (paginated)",
+        "security": [
+          {
+            "webAppKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional status filter (e.g. pending / running / completed)."
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9999,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Page of tasks owned by the caller, ordered by updated_at DESC.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NarratorTaskListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid pagination params (BAD_REQUEST): page < 1, limit not in [1, 9999], or non-integer values."
+          },
+          "401": {
+            "description": "X-Web-App-Key missing / malformed / unknown."
+          },
+          "503": {
+            "description": "Narrator tasks store temporarily unavailable."
+          }
+        }
+      }
+    },
+    "/narrator/tasks/{narrator_task_id}": {
+      "parameters": [
+        {
+          "name": "narrator_task_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "summary": "Fetch a single master task scoped to the caller",
+        "description": "Returns 404 for both missing rows and rows owned by another user — existence isn't leaked across the tenant boundary.",
+        "security": [
+          {
+            "webAppKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Task found and owned by the caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NarratorTaskResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "X-Web-App-Key missing / malformed / unknown."
+          },
+          "404": {
+            "description": "Task is missing OR belongs to another user (NOT_FOUND). Existence is intentionally not distinguished from cross-tenant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Narrator tasks store temporarily unavailable."
+          }
+        }
+      },
+      "put": {
+        "summary": "Replace a master task body (optional CAS preconditions)",
+        "description": "Replaces the row in full. With `expected_status` and/or `expected_step` query params, the write becomes a compare-and-set: if the row's current state doesn't satisfy the preconditions, returns 409 CAS_MISMATCH and does not write. `expected_status` may be a comma-separated list (e.g. `running,paused`); the precondition holds if the current status is in the list. Mirrors the `dbCasUpdate` semantics the web-side step orchestrator depends on.",
+        "security": [
+          {
+            "webAppKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "expected_status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated list of allowed current `status` values for the CAS precondition."
+          },
+          {
+            "name": "expected_step",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required current `current_step` value for the CAS precondition (in addition to expected_status if both are supplied)."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NarratorTaskBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Row updated. CAS preconditions (if any) matched.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NarratorTaskResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Body is not a JSON object, or `narrator_task_id` in body conflicts with the URL path (BAD_REQUEST)."
+          },
+          "401": {
+            "description": "X-Web-App-Key missing / malformed / unknown."
+          },
+          "404": {
+            "description": "Task is missing OR belongs to another user (NOT_FOUND)."
+          },
+          "409": {
+            "description": "Row exists for this user but its current state does not satisfy the `expected_status` / `expected_step` preconditions (CAS_MISMATCH). The write was rejected; no state change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Narrator tasks store temporarily unavailable."
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "walletBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      },
+      "pricingBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Pricing BFF token (PRICING_BFF_AUTH_TOKEN env var). **Server-side only** — must never be embedded in browser-visible code or client-bundle env (NEXT_PUBLIC_* / VITE_* etc.). The browser authenticates to Web with session/cookie; Web's SSR/API tier proxies to /pricing/movie-baokuan with this Bearer token. Distributing the token to browsers defeats the authorization boundary and lets any user consume upstream quota via the backend's server-side app-key."
+      },
+      "webAppKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Web-App-Key",
+        "description": "Reseller end-user identity (`users.app_key`, format `grid_<22 base62>`, issued by `scripts/create_user.py`). Required on routes that consume upstream quota or affect end-user balance, so the BFF Bearer cannot be turned into a free pass for arbitrary internet callers. Forwarded by narrator-ai-web BFF from the incoming `x-app-key` request header. Routes requiring both `pricingBearer` AND `webAppKey` use a single security entry with both keys (AND semantics in OpenAPI 3)."
+      }
+    },
+    "parameters": {
+      "IdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9:_.-]+$"
+        }
+      },
+      "IdempotencyKeyPath": {
+        "name": "idempotency_key",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9:_.-]+$"
+        }
+      },
+      "WalletTransactionId": {
+        "name": "wallet_transaction_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "WebOrderId": {
+        "name": "web_order_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "WebTenantId": {
+        "name": "web_tenant_id",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "WebUserId": {
+        "name": "web_user_id",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Bad request"
+      },
+      "NotFound": {
+        "description": "Not found"
+      },
+      "WalletError": {
+        "description": "Wallet error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "NarratorMetadataUpstream": {
+        "description": "Upstream payload forwarded verbatim. Shape varies per upstream endpoint (some return `{code, data}`, others return bare arrays). Web tier already knows how to parse each route's upstream contract.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "NarratorMetadataAuthFailure": {
+        "description": "Authentication failed. One of: Bearer missing/invalid (UNAUTHORIZED); X-Web-App-Key missing/empty (WEB_APP_KEY_MISSING); X-Web-App-Key format invalid (WEB_APP_KEY_INVALID); X-Web-App-Key not in users table (WEB_APP_KEY_UNKNOWN).",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "NarratorMetadataUpstreamFailure": {
+        "description": "Upstream returned non-2xx HTTP, unreachable, non-JSON body, or response exceeded MAX_UPSTREAM_BYTES (UPSTREAM_HTTP_ERROR / UPSTREAM_UNREACHABLE / UPSTREAM_DECODE_ERROR / UPSTREAM_RESPONSE_TOO_LARGE).",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "NarratorMetadataServiceUnavailable": {
+        "description": "Pricing BFF token not configured (PRICING_BFF_NOT_CONFIGURED), upstream not configured (UPSTREAM_NOT_CONFIGURED), upstream 5xx (UPSTREAM_HTTP_ERROR, retryable), or users-table lookup raised (USER_LOOKUP_FAILED, retryable).",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "NarratorMetadataUpstreamTimeout": {
+        "description": "Upstream did not respond in time (UPSTREAM_TIMEOUT, retryable).",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "CloudDriveSuccess": {
+        "description": "Cloud-drive success envelope.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "success",
+                "data"
+              ],
+              "properties": {
+                "success": {
+                  "type": "boolean",
+                  "enum": [
+                    true
+                  ]
+                },
+                "data": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      },
+      "CloudDriveError": {
+        "description": "Cloud-drive error envelope. Common codes include UNAUTHORIZED, WEB_APP_KEY_MISSING, WEB_APP_KEY_INVALID, WEB_APP_KEY_UNKNOWN, BAD_REQUEST, CLOUD_DRIVE_QUOTA_EXCEEDED, NOT_FOUND, UPSTREAM_* and CLOUD_DRIVE_DB_UNAVAILABLE.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "CloudDriveUploadUrlRequest": {
+        "type": "object",
+        "required": [
+          "file_name",
+          "file_size"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "file_name": {
+            "type": "string"
+          },
+          "file_size": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "content_type": {
+            "type": "string",
+            "default": "application/octet-stream"
+          }
+        }
+      },
+      "CloudDriveUploadCallbackRequest": {
+        "type": "object",
+        "required": [
+          "file_id",
+          "object_key"
+        ],
+        "additionalProperties": true,
+        "properties": {
+          "upload_status": {
+            "type": "string",
+            "default": "success"
+          },
+          "file_size": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "file_name": {
+            "type": "string"
+          },
+          "file_id": {
+            "type": "string"
+          },
+          "object_key": {
+            "type": "string"
+          },
+          "upload_url": {
+            "type": "string"
+          },
+          "expires_in": {
+            "type": "integer"
+          },
+          "upload_directory": {
+            "type": "string"
+          },
+          "srt_file_hash": {
+            "type": "string",
+            "description": "64-character sha256 hex. Required for successful local .srt uploads."
+          },
+          "sha256": {
+            "type": "string",
+            "description": "Alias for srt_file_hash."
+          },
+          "file_sha256": {
+            "type": "string",
+            "description": "Alias for srt_file_hash."
+          }
+        }
+      },
+      "CloudDriveFileIdRequest": {
+        "type": "object",
+        "required": [
+          "file_id"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "file_id": {
+            "type": "string"
+          }
+        }
+      },
+      "CloudDriveTransferRequest": {
+        "type": "object",
+        "required": [
+          "link"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "link": {
+            "type": "string"
+          },
+          "file_size": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Optional pre-known file size. Omit for Baidu Netdisk/share links where Web cannot know the size before backend/upstream metadata resolution."
+          },
+          "file_name": {
+            "type": "string",
+            "description": "Optional display name used before upstream transfer metadata is returned."
+          }
+        }
+      },
+      "CloudDriveBatchDeleteRequest": {
+        "type": "object",
+        "required": [
+          "file_ids"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "file_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          }
+        }
+      },
+      "PricingRequest": {
+        "type": "object",
+        "required": [
+          "template_id",
+          "combo_key"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "template_id": {
+            "type": "integer"
+          },
+          "combo_key": {
+            "type": "string"
+          }
+        }
+      },
+      "SrtRealtimeQuoteRequest": {
+        "type": "object",
+        "required": [
+          "combo_key"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "combo_key": {
+            "type": "string",
+            "enum": [
+              "original_narration_flash",
+              "original_narration_pro",
+              "original_remix_flash",
+              "original_remix_pro",
+              "secondary_creation"
+            ]
+          },
+          "srt_payload": {
+            "type": "string",
+            "description": "Raw SRT content. Either srt_payload or srt_metrics must be provided; srt_metrics takes precedence."
+          },
+          "srt_metrics": {
+            "type": "object",
+            "required": [
+              "text_chars",
+              "text_lines"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "text_chars": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "text_lines": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          },
+          "correlation_id": {
+            "type": "string"
+          }
+        }
+      },
+      "QuoteRequest": {
+        "type": "object",
+        "required": [
+          "web_tenant_id",
+          "web_user_id",
+          "web_order_id",
+          "template_id",
+          "combo_key"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "web_tenant_id": {
+            "type": "string"
+          },
+          "web_user_id": {
+            "type": "string"
+          },
+          "web_order_id": {
+            "type": "string"
+          },
+          "template_id": {
+            "type": "integer"
+          },
+          "combo_key": {
+            "type": "string"
+          },
+          "client_correlation_id": {
+            "type": "string"
+          }
+        }
+      },
+      "FreezeRequest": {
+        "type": "object",
+        "required": [
+          "quote_id",
+          "web_tenant_id",
+          "web_user_id",
+          "web_order_id"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "quote_id": {
+            "type": "string"
+          },
+          "web_tenant_id": {
+            "type": "string"
+          },
+          "web_user_id": {
+            "type": "string"
+          },
+          "web_order_id": {
+            "type": "string"
+          },
+          "correlation": {
+            "type": "object"
+          }
+        }
+      },
+      "ConfirmRequest": {
+        "type": "object",
+        "required": [
+          "wallet_transaction_id",
+          "web_tenant_id",
+          "web_user_id",
+          "web_order_id",
+          "correlation"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "wallet_transaction_id": {
+            "type": "string"
+          },
+          "web_tenant_id": {
+            "type": "string"
+          },
+          "web_user_id": {
+            "type": "string"
+          },
+          "web_order_id": {
+            "type": "string"
+          },
+          "correlation": {
+            "$ref": "#/components/schemas/ConfirmCorrelation"
+          }
+        }
+      },
+      "ConfirmCorrelation": {
+        "type": "object",
+        "required": [
+          "web_master_task_id",
+          "api_task_id",
+          "api_request_id"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "web_master_task_id": {
+            "type": "string"
+          },
+          "api_task_id": {
+            "type": "string"
+          },
+          "api_request_id": {
+            "type": "string"
+          },
+          "api_correlation_id": {
+            "type": "string"
+          },
+          "legacy_consume_budget_evidence": {
+            "type": "object",
+            "description": "Optional same-order legacy consume_budget evidence. When present, wallet confirm returns 409 WALLET_DOUBLE_BILLING_GUARD and leaves the hard-price transaction frozen.",
+            "additionalProperties": true
+          }
+        }
+      },
+      "RefundRequest": {
+        "type": "object",
+        "required": [
+          "wallet_transaction_id",
+          "web_tenant_id",
+          "web_user_id",
+          "web_order_id",
+          "reason_code",
+          "reason_message",
+          "correlation"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "wallet_transaction_id": {
+            "type": "string"
+          },
+          "web_tenant_id": {
+            "type": "string"
+          },
+          "web_user_id": {
+            "type": "string"
+          },
+          "web_order_id": {
+            "type": "string"
+          },
+          "reason_code": {
+            "type": "string"
+          },
+          "reason_message": {
+            "type": "string"
+          },
+          "correlation": {
+            "$ref": "#/components/schemas/RefundCorrelation"
+          }
+        }
+      },
+      "RefundCorrelation": {
+        "type": "object",
+        "required": [
+          "web_master_task_id",
+          "api_request_id",
+          "reconciliation_status"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "web_master_task_id": {
+            "type": "string"
+          },
+          "api_request_id": {
+            "type": "string"
+          },
+          "api_error_code": {
+            "type": "string"
+          },
+          "reconciliation_status": {
+            "type": "string"
+          }
+        }
+      },
+      "OverbillRefundRequest": {
+        "type": "object",
+        "required": [
+          "wallet_transaction_id",
+          "web_tenant_id",
+          "web_user_id",
+          "web_order_id",
+          "refund_amount_points",
+          "reason_code",
+          "reason_message",
+          "evidence"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "wallet_transaction_id": {
+            "type": "string"
+          },
+          "web_tenant_id": {
+            "type": "string"
+          },
+          "web_user_id": {
+            "type": "string"
+          },
+          "web_order_id": {
+            "type": "string"
+          },
+          "refund_amount_points": {
+            "type": "string",
+            "pattern": "^\\d+(\\.\\d{2})$"
+          },
+          "reason_code": {
+            "type": "string"
+          },
+          "reason_message": {
+            "type": "string"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/OverbillRefundEvidence"
+          }
+        }
+      },
+      "OverbillRefundEvidence": {
+        "type": "object",
+        "required": [
+          "source",
+          "operator_id"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "operator_id": {
+            "type": "string"
+          },
+          "evidence_url": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        }
+      },
+      "SuccessResponse": {
+        "type": "object",
+        "required": [
+          "success",
+          "data"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "type": "object"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "required": [
+          "success",
+          "error"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          },
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message",
+              "retryable",
+              "details"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "retryable": {
+                "type": "boolean"
+              },
+              "details": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "MovieBaokuanResponse": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/MovieBaokuanSuccess"
+          },
+          {
+            "$ref": "#/components/schemas/MovieBaokuanUpstreamError"
+          }
+        ],
+        "description": "200 response is either a success envelope (code=10000 with data.total/items) or an upstream business-error pass-through (code != 10000 with data as null or any upstream shape). Consumers MUST branch on `code === 10000` before reading `data.items`."
+      },
+      "MovieBaokuanSuccess": {
+        "type": "object",
+        "description": "Upstream success: code=10000, with items filtered to templates that have complete v2 catalog tiers.",
+        "required": [
+          "code",
+          "data"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "enum": [
+              10000
+            ],
+            "description": "Always 10000 in this branch."
+          },
+          "message": {
+            "type": "string",
+            "example": "success"
+          },
+          "data": {
+            "type": "object",
+            "required": [
+              "items"
+            ],
+            "properties": {
+              "total": {
+                "type": "integer"
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/MovieBaokuanItem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "MovieBaokuanUpstreamError": {
+        "type": "object",
+        "description": "Upstream business error (code != 10000) forwarded as-is. `data` is typically null but may be any shape — consumers MUST NOT assume `data.items` exists.",
+        "required": [
+          "code"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "Upstream business-error code, NOT 10000.",
+            "example": 40001
+          },
+          "message": {
+            "type": "string",
+            "example": "invalid platform_id"
+          },
+          "data": {
+            "nullable": true,
+            "description": "Typically null. Schema not constrained — upstream-defined."
+          }
+        }
+      },
+      "MovieBaokuanItem": {
+        "type": "object",
+        "description": "Upstream item shape pass-through, with v2 catalog tiers appended by the backend. Items lacking a complete 5-tier v2 catalog are omitted from success responses.",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "Upstream res_movie_baokuan PK."
+          },
+          "code": {
+            "type": "string",
+            "nullable": true,
+            "description": "External xy-code (for example, xy0001). Join key maps xy0001 -> pricing_template_v2.template_id 1. NULL/custom placeholders are omitted from success items."
+          },
+          "name": {
+            "type": "string"
+          },
+          "learning_model_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "narrator_type": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              }
+            }
+          },
+          "time": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              }
+            }
+          },
+          "img": {
+            "type": "string"
+          },
+          "like": {
+            "type": "integer"
+          },
+          "share": {
+            "type": "integer"
+          },
+          "messages": {
+            "type": "integer"
+          },
+          "stars": {
+            "type": "integer"
+          },
+          "profit": {
+            "type": "string",
+            "description": "Decimal as string (upstream convention)."
+          },
+          "slug_img": {
+            "type": "string"
+          },
+          "link": {
+            "type": "string"
+          },
+          "collection_time": {
+            "type": "string",
+            "format": "date"
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "integer"
+                },
+                "name": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "pricing_rule_version": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ],
+            "description": "backend-augmented compatibility field sourced from rounding_rule_version. If future tier rows disagree, this is an array of versions; clients should prefer tiers[...].pricing_rule_version."
+          },
+          "tiers": {
+            "type": "object",
+            "description": "Complete 5-tier v2 catalog map keyed by tier_code. All five keys are present for every returned item.",
+            "required": [
+              "derivative",
+              "original_mix_flash",
+              "original_mix_pro",
+              "original_narration_flash",
+              "original_narration_pro"
+            ],
+            "properties": {
+              "derivative": {
+                "$ref": "#/components/schemas/MovieBaokuanTier"
+              },
+              "original_mix_flash": {
+                "$ref": "#/components/schemas/MovieBaokuanTier"
+              },
+              "original_mix_pro": {
+                "$ref": "#/components/schemas/MovieBaokuanTier"
+              },
+              "original_narration_flash": {
+                "$ref": "#/components/schemas/MovieBaokuanTier"
+              },
+              "original_narration_pro": {
+                "$ref": "#/components/schemas/MovieBaokuanTier"
+              }
+            }
+          }
+        }
+      },
+      "NarratorTaskBody": {
+        "type": "object",
+        "description": "The full master-task object as defined on the web side (NarratorMasterTask in src/lib/master-task-types.ts). The backend persists it verbatim as a JSONB blob — schema is not enforced at the API boundary so the web-side type can evolve without alembic churn. `narrator_task_id` is optional on POST (server-assigned when absent) and must equal the URL path on PUT. `quote_id` is an OPTIONAL POST-only field — when present, the backend commits the bound `pricing_quotes_v2` row into a `pricing_snapshots_v2` snapshot and stamps `narrator_tasks.snapshot_id`. The body must NOT carry `total`, `breakdown`, or `final_charge_price` (rejected as QUOTE_BODY_PRICE_FORBIDDEN); the server trusts only the quote.",
+        "additionalProperties": true,
+        "properties": {
+          "narrator_task_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "default": "pending"
+          },
+          "current_step": {
+            "type": "string",
+            "nullable": true
+          },
+          "app_key": {
+            "type": "string",
+            "description": "Ignored if present — the server overwrites with the authenticated `X-Web-App-Key` to prevent client-side tenant spoofing."
+          },
+          "quote_id": {
+            "type": "string",
+            "description": "Optional POST-only. Binds this master task to a previously generated `pricing_quotes_v2` row. Server commits a snapshot and returns `snapshot_id` in the response."
+          }
+        }
+      },
+      "NarratorTaskResponse": {
+        "type": "object",
+        "required": [
+          "success",
+          "data"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NarratorTaskBody"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "snapshot_id": {
+                    "type": "string",
+                    "description": "Present iff the POST body carried a `quote_id` and the snapshot was committed."
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "PricingQuoteRequest": {
+        "type": "object",
+        "description": "Request payload for POST /pricing/quote. Exactly one of `template_id` / `custom_template_id` must be set. For `custom_template_id`, both `custom_srt_file_hash` and `custom_srt_valid_line_count` are required.",
+        "required": [
+          "combo_key"
+        ],
+        "properties": {
+          "template_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "custom_template_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "combo_key": {
+            "type": "string",
+            "description": "Must end with `_pro` when `pro_upgrade=true`; must not end with `_pro` when `pro_upgrade=false`."
+          },
+          "pro_upgrade": {
+            "type": "boolean",
+            "default": false
+          },
+          "custom_srt_file_hash": {
+            "type": "string",
+            "nullable": true
+          },
+          "custom_srt_valid_line_count": {
+            "type": "integer",
+            "minimum": 1,
+            "nullable": true
+          }
+        }
+      },
+      "PricingQuoteResponse": {
+        "type": "object",
+        "required": [
+          "success",
+          "data"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "type": "object",
+            "required": [
+              "quote_id",
+              "pricing_rule_version",
+              "price_source",
+              "combo_key",
+              "final_charge_price",
+              "flash_total",
+              "pro_total",
+              "pro_upgrade_delta",
+              "pricing_minutes",
+              "breakdown",
+              "expires_at",
+              "currency_unit"
+            ],
+            "properties": {
+              "quote_id": {
+                "type": "string"
+              },
+              "pricing_rule_version": {
+                "type": "string"
+              },
+              "price_source": {
+                "type": "string",
+                "enum": [
+                  "manual_catalog_price",
+                  "system_calculated_price"
+                ]
+              },
+              "template_id": {
+                "type": "string",
+                "nullable": true
+              },
+              "custom_template_id": {
+                "type": "string",
+                "nullable": true
+              },
+              "combo_key": {
+                "type": "string"
+              },
+              "starting_price": {
+                "type": "integer",
+                "nullable": true
+              },
+              "final_charge_price": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "flash_total": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "pro_total": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "pro_upgrade_delta": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "pricing_minutes": {
+                "type": "number"
+              },
+              "valid_line_count": {
+                "type": "integer",
+                "nullable": true
+              },
+              "breakdown": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "subflow_key",
+                    "display_label",
+                    "pricing_minutes",
+                    "unit_price",
+                    "subtotal"
+                  ],
+                  "properties": {
+                    "subflow_key": {
+                      "type": "string"
+                    },
+                    "display_label": {
+                      "type": "string"
+                    },
+                    "pricing_minutes": {
+                      "type": "number"
+                    },
+                    "unit_price": {
+                      "type": "integer"
+                    },
+                    "subtotal": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              },
+              "expires_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "currency_unit": {
+                "type": "string",
+                "default": "web_point"
+              }
+            }
+          }
+        }
+      },
+      "NarratorTaskListResponse": {
+        "type": "object",
+        "required": [
+          "success",
+          "data"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "type": "object",
+            "required": [
+              "items",
+              "total"
+            ],
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/NarratorTaskBody"
+                }
+              },
+              "total": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "MovieBaokuanTier": {
+        "type": "object",
+        "description": "One v2 catalog tier. manual_price is the user-facing price; system_reference_price is returned for internal/admin reference and must not be displayed on C-end UI.",
+        "required": [
+          "tier_code",
+          "manual_price",
+          "system_reference_price",
+          "pricing_rule_version",
+          "currency_unit"
+        ],
+        "properties": {
+          "tier_code": {
+            "type": "string",
+            "enum": [
+              "derivative",
+              "original_mix_flash",
+              "original_mix_pro",
+              "original_narration_flash",
+              "original_narration_pro"
+            ]
+          },
+          "product_line": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string",
+            "nullable": true
+          },
+          "quality": {
+            "type": "string",
+            "nullable": true
+          },
+          "flash_pro_axis": {
+            "type": "string",
+            "enum": [
+              "required",
+              "optional"
+            ]
+          },
+          "manual_price": {
+            "type": "integer",
+            "description": "User-facing price in web_point."
+          },
+          "pro_surcharge_display": {
+            "type": "integer",
+            "nullable": true
+          },
+          "system_reference_price": {
+            "type": "integer",
+            "description": "Internal/admin reference price in web_point; returned by API but hidden from C-end UI."
+          },
+          "currency_unit": {
+            "type": "string",
+            "enum": [
+              "web_point"
+            ]
+          },
+          "raw_rate": {
+            "type": "string",
+            "description": "Decimal serialized as string by Flask JSON provider."
+          },
+          "final_rate": {
+            "type": "string",
+            "description": "Decimal serialized as string by Flask JSON provider."
+          },
+          "pricing_rule_version": {
+            "type": "string",
+            "description": "Sourced from pricing_catalog_v2_entry.rounding_rule_version."
+          },
+          "manual_override_warning": {
+            "type": "boolean"
+          },
+          "effective_version": {
+            "type": "integer"
+          }
+        }
+      }
+    }
+  }
+}
