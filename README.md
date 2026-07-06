@@ -2,9 +2,15 @@
 
 [中文](./README_CN.md)
 
-Self-hostable Flask backend for a template-driven commentary-video workflow. It provides the API layer for pricing quotes, wallet transactions, user-scoped task storage, cloud-drive proxying, task orchestration, and upstream commentary-service proxy routes.
+`narrator-ai-web-backend` is a self-hostable Flask backend for NarratorAI, a template-driven workflow that helps users turn movies, short dramas, raw clips, and other long-form video material into commentary videos.
 
-The companion frontend lives in the `narrator-ai-web` repository.
+The companion frontend lets users upload source videos or import video URLs, choose a commentary template, review the task price, and submit the job. This backend provides the API layer for template pricing, quotes, wallet transactions, user-scoped task storage, cloud-drive proxying, task orchestration, and upstream commentary-service proxy routes.
+
+Each commentary template can carry its own price. Before a task is submitted, the frontend asks this backend for a quote so the user can confirm the charge first. The connected upstream commentary service can then generate commentary scripts, editing instructions, and a condensed commentary video suitable for publishing on short-video platforms.
+
+This project is useful for movie commentary, short-drama commentary, plot recaps, content-studio batch production, and teams that want to package commentary templates as sellable products.
+
+Companion frontend repository: [NarratorAI-Studio/narrator-ai-web](https://github.com/NarratorAI-Studio/narrator-ai-web).
 
 ## Demo
 
